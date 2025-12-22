@@ -1,0 +1,126 @@
+\section{Real-Time Prediction Algorithm}
+\label{sec:algorithm}
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig/system-architecture.pdf} % 或 .png
+  \caption{
+    Block diagram of the real-time diagnosis loop. Multi-sensor measurements $\mathbf{y}_k$ are sampled at period $T_s$, buffered into sliding windows $\mathbf{Y}_w$ of length $L$ with stride $S$, mapped to feature vectors $\mathbf{z}_w$, normalized to $\tilde{\mathbf{z}}_w$, classified by the model $g_\theta(\cdot)$ into class probabilities $\mathbf{p}_w$, and finally converted into diagnostic decisions $\hat{f}_w$ and alarms via a decision logic module.
+  }
+  \label{fig:loop}
+\end{figure}
+
+Many studies on fault diagnosis report classification accuracy as the primary performance measure, while latency and computational budgets are treated as secondary concerns. In an industrial environment, however, a diagnosis module that cannot provide decisions within a specified time bound may be unsuitable regardless of its performance on historical data. The real-time prediction algorithm described in this section builds on the operator-based formulation in Section~\ref{sec:problem_formulation} and introduces a timing model that links feature-extraction cost, inference cost, and windowing parameters to the sampling period. The objective is to obtain explicit conditions for bounded response time and to make those conditions verifiable on a given edge platform.
+
+\subsection{System Architecture}
+We consider an edge device (industrial PC, embedded controller, or microcontroller) connected to the sensor network or data acquisition unit. The device executes a cyclic real-time loop that processes the incoming samples $\{\mathbf{y}_k\}$ defined in~\eqref{eq:yk} and produces window-level decisions $\hat{f}_w$ as in~\eqref{eq:map}. Figure~\ref{fig:loop} provides a block diagram of this loop, highlighting the flow from sensor measurements to alarms.
+
+At a high level, one iteration of the loop involves the following stages:
+
+\begin{enumerate}
+    \item \textbf{Sampling}: Sensor data are acquired at a fixed sampling period $T_s > 0$. At each time step $k$, a new measurement vector $\mathbf{y}_k \in \mathbb{R}^M$ is read.
+    \item \textbf{Window buffering}: The most recent $L$ samples are stored in a finite-length buffer, which realises the sliding window $\mathbf{Y}_w \in \mathbb{R}^{M \times L}$ defined in~\eqref{eq:Yw}. The stride parameter $S$ specifies how many new samples elapse between consecutive windows.
+    \item \textbf{Online feature extraction and normalisation}: The window $\mathbf{Y}_w$ is passed through the feature-extraction operator $\phi(\cdot)$ in~\eqref{eq:phi}, yielding $\mathbf{z}_w$, which is then normalised to $\tilde{\mathbf{z}}_w$ according to~\eqref{eq:normalize}.
+    \item \textbf{Model inference}: The classifier $g_\theta(\cdot)$ in~\eqref{eq:gtheta} maps $\tilde{\mathbf{z}}_w$ to a probability vector $\mathbf{p}_w$ as in~\eqref{eq:pw}.
+    \item \textbf{Decision and alarm update}: The probabilities $\mathbf{p}_w$ are converted into a predicted label $\hat{f}_w$ via~\eqref{eq:map}, and the decision logic in~\eqref{eq:alarm}–\eqref{eq:uncertain} updates the diagnosis state and generates fault alarms or uncertainty warnings.
+\end{enumerate}
+
+Let $T_{\text{feat}}$ denote the worst-case execution time (WCET) required to compute $\mathbf{z}_w$ and $\tilde{\mathbf{z}}_w$ (feature extraction and normalisation), and let $T_{\text{inf}}$ denote the WCET for model inference to produce $\mathbf{p}_w$. Since a new window is processed every $S$ samples—i.e., every $S T_s$ seconds—real-time feasibility requires that the computation associated with one window completes before the next window becomes available:
+\begin{equation}
+    T_{\text{feat}} + T_{\text{inf}} \leq S T_s.
+    \label{eq:timing_constraint}
+\end{equation}
+Inequality~\eqref{eq:timing_constraint} is the central timing constraint of the proposed framework. Table~\ref{tab:latency} summarises, for representative configurations, how the design parameters $(L, S)$, the complexity terms, and the measured times relate to the available budget $S T_s$ on a given hardware platform.
+
+In Table~\ref{tab:latency}, each configuration corresponds to a choice of feature extractor and classifier. The feature dimension $d$ reflects the output size of $\phi(\cdot)$, while $T_{\text{feat}}$ and $T_{\text{inf}}$ are measured under worst-case conditions (e.g., maximum CPU load). The margin column is computed as
+\[
+    \text{Margin} = S T_s - (T_{\text{feat}} + T_{\text{inf}}),
+\]
+so a positive value indicates that the real-time constraint~\eqref{eq:timing_constraint} is satisfied with slack.
+
+\begin{table}[t]
+\centering
+\caption{Example latency and complexity breakdown for different windowing and model configurations. $L$: window length, $S$: stride, $d$: feature dimension, $T_{\text{feat}}$, $T_{\text{inf}}$: measured WCETs on target edge device, $S T_s$: real-time budget, Margin: slack time.}
+\label{tab:latency}
+\begin{tabular}{lccccccc}
+\toprule
+Config & $L$ & $S$ & $d$ & $T_{\text{feat}}$ [ms] & $T_{\text{inf}}$ [ms] & $S T_s$ [ms] & Margin [ms] \\
+\midrule
+A: small CNN   & 256  & 64  & 64  & 0.35 & 0.40 & 4.00 & 3.25 \\
+B: medium CNN  & 512  & 64  & 128 & 0.70 & 1.10 & 4.00 & 2.20 \\
+C: large CNN   & 1024 & 128 & 256 & 1.60 & 2.40 & 8.00 & 4.00 \\
+D: ELM encoder & 512  & 64  & 64  & 0.20 & 0.35 & 4.00 & 3.45 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Streaming Window Algorithm}
+The sliding-window representation in~\eqref{eq:Yk}\text{--}\eqref{eq:Yw} can be implemented efficiently using a first-in–first-out (FIFO) buffer of length $L$. Algorithm~\ref{alg:diagnosis} describes the resulting streaming procedure. The buffer $\mathcal{B}$ stores the most recent $L$ samples, and the index $k$ denotes the current sampling step. When the buffer is full ($|\mathcal{B}| = L$) and the stride condition $(k \bmod S) = 0$ is satisfied, the current buffer contents are treated as a window $\mathbf{Y}_w$ and processed by the feature extractor and classifier.
+
+This implementation ensures that the theoretical windowing scheme is respected while avoiding explicit copying of large arrays—critical when $M L$ is large.
+\subsection{Pseudocode}
+\label{subsec:pseudocode}
+
+Algorithm~1 summarises the real-time ML-based fault diagnosis loop. The inputs are the streaming sensor measurements $\{\mathbf{y}_k\}$, the window length $L$, stride $S$, a trained classifier $g_\theta$, and the decision thresholds $\tau_{\text{conf}}$ and $\tau_{\text{fault}}$ used in Equations~(13)--(14). The outputs are the sequence of predicted labels $\hat{f}_w$ and the corresponding fault or uncertainty alarms.
+
+Lines~1--4 of Algorithm~1 implement the buffer management that realises the sliding window $\mathbf{Y}_w$. Lines~5--8 perform feature extraction and normalisation, and lines~9--12 apply the classifier and decision logic. The thresholds $\tau_{\text{fault}}$ and $\tau_{\text{conf}}$ can be tuned to trade off false-alarm rate versus missed detections and to control how frequently the system enters the uncertainty regime.
+
+\begin{algorithm}[t]
+\caption{Real-time ML-based fault diagnosis}
+\label{alg:diagnosis}
+\begin{algorithmic}[1]
+\Require Sensor stream $\{\mathbf{y}_k\}$, window length $L$, stride $S$, trained model $g_\theta$, thresholds $\tau_{\text{conf}}$, $\tau_{\text{fault}}$, healthy class index $f_{\text{healthy}}$.
+\Ensure Sequence of predicted labels $\hat{f}_w$ and alarms.
+\State Initialise empty buffer $\mathcal{B}$, window index $w \gets 0$.
+\For{$k = 1, 2, \dots$}
+    \State Append $\mathbf{y}_k$ to buffer $\mathcal{B}$.
+    \If{$|\mathcal{B}| > L$}
+        \State Discard the oldest sample so that $|\mathcal{B}| = L$.
+    \EndIf
+    \If{$|\mathcal{B}| = L$ \textbf{and} $(k \bmod S) = 0$}
+        \State $w \gets w + 1$.
+        \State Form window $\mathbf{Y}_w$ from buffer $\mathcal{B}$ (as in~(6)).
+        \State Compute features $\mathbf{z}_w = \phi(\mathbf{Y}_w)$ and normalise $\tilde{\mathbf{z}}_w$ as in~(7)--(8).
+        \State Compute posterior probabilities $\mathbf{p}_w = g_\theta(\tilde{\mathbf{z}}_w)$ as in~(10).
+        \State Set $\hat{f}_w = \arg\max_{c \in \mathcal{F}} p_{w,c}$ as in~(11).
+        \If{$\hat{f}_w \neq f_{\text{healthy}}$ \textbf{and} $p_{w,\hat{f}_w} \geq \tau_{\text{fault}}$}
+            \State Raise a fault alarm for window $w$.
+        \ElsIf{$\max_{c \in \mathcal{F}} p_{w,c} < \tau_{\text{conf}}$}
+            \State Raise an uncertainty warning for window $w$.
+        \EndIf
+    \EndIf
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Complexity and latency analysis}
+\label{subsec:complexity}
+
+To relate the computational characteristics of the algorithm to the timing constraint in~(15), we introduce a simple complexity model. Let $C_\phi$ denote the computational cost of feature extraction per window and $C_g$ the cost of classifier inference per window. These costs may be expressed in floating-point operations (FLOPs), processor cycles or measured execution time, depending on the analysis detail.
+
+For models implemented as feed-forward neural networks, the inference cost $C_g$ is often approximately proportional to the total number of parameters or, more precisely, to the number of multiply--accumulate operations. For a 1D-CNN with $P$ parameters, one can write the rough scaling
+\begin{equation}
+C_g = O(P), \quad C_\phi = O(ML),
+\label{eq:complexity_scaling}
+\end{equation}
+where $C_\phi$ reflects simple time-domain features computed on all $M$ channels and $L$ samples. When $\phi(\cdot)$ itself is implemented as a deep network, its cost is absorbed into $C_g$ and~(16) should be interpreted at the level of the combined feature-extraction and classifier architecture.
+
+On a given hardware platform, the measured times $T_{\text{feat}}$ and $T_{\text{inf}}$ can be related to $C_\phi$ and $C_g$ via the effective processing throughput. Table~1 then provides a compact summary of how different design choices ($L$, $S$, $d$) and model configurations affect the real-time margin with respect to the budget $S T_s$. Substituting the measured times into Equation~(15) verifies whether the chosen model and windowing parameters satisfy the real-time constraint for the target sampling period $T_s$.
+
+If the inequality Equation~(15) is not satisfied with sufficient margin, several standard techniques may be applied: reducing the feature dimension $d$, lowering the window length $L$, increasing the stride $S$, pruning or quantising the model $g_\theta$, or replacing it with a more compact architecture such as an extreme learning machine (ELM) or a small CNN designed for edge deployment. The impact of these choices on both diagnostic performance and latency can then be assessed within the unified framework described above.
+
+\begin{table}[t]
+\centering
+\caption{Summary of datasets used in the experiments. Here $f_s$ is the sampling frequency, $|\mathcal{F}|$ the number of health states, and $N_{\text{tr}}$, $N_{\text{te}}$ the number of training and test windows, respectively.}
+\label{tab:datasets}
+\begin{tabular}{lccccc}
+\toprule
+Dataset & $f_s$ [kHz] & Sensors & $|\mathcal{F}|$ & $N_{\text{tr}}$ & $N_{\text{te}}$ \\
+\midrule
+CWRU bearings       & 12   & Acc. (4 ch.)          & 4--10 & $N^{\text{CWRU}}_{\text{tr}}$ & $N^{\text{CWRU}}_{\text{te}}$ \\
+Paderborn bearings  & 64   & Acc. (3 ch.), I       & 5--7  & $N^{\text{PB}}_{\text{tr}}$   & $N^{\text{PB}}_{\text{te}}$   \\
+Motor drive rig     & 20   & Acc., current         & 4--6  & $N^{\text{MD}}_{\text{tr}}$   & $N^{\text{MD}}_{\text{te}}$   \\
+Industrial pump line& 25.6 & Acc. (2 ch.)          & 3--5  & $N^{\text{PL}}_{\text{tr}}$   & $N^{\text{PL}}_{\text{te}}$   \\
+\bottomrule
+\end{tabular}
+\end{table}

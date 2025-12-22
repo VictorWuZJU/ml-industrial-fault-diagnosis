@@ -1,0 +1,76 @@
+\section{Experimental Setup}
+This section describes the datasets, preprocessing steps, model configurations and evaluation protocol used to assess the diagnostic performance and real-time behaviour of the proposed framework. The aim is to make the data preparation and implementation choices explicit so that the study can be reproduced or adapted to related assets.
+
+\subsection{Data sources}
+The experimental study considers both public benchmark datasets and industrial plant data. Public datasets provide controlled, well-documented conditions that facilitate comparison with prior work on rotating machinery fault diagnosis, while industrial data expose the models to realistic operating variability, non-ideal sensor placement and measurement noise.
+Table 2 summarises the datasets used in the study. For each dataset, the table reports the sampling frequency fs, the available sensor types (e.g., accelerometers, current probes), the number of health states |F| (including the healthy state and individual fault modes), and the number of windows
+used for training and testing. The values shown are placeholders and should be replaced by the specific figures of the final experimental campaign.
+For each dataset, raw signals are segmented into windows of length L
+samples and stride S according to the formulation in Section 3. Fault labels
+
+\begin{table}[htbp]
+\centering
+\caption{Windowing and data split parameters. The window length L and stride S are given in samples; the corresponding durations in milliseconds are obtained using the sampling frequency fs.}
+\label{tab:windowing_params}
+\begin{tabular}{lccccc}
+Dataset & Window & Stride & \multicolumn{2}{c}{Duration [ms]} & Train / Val / \\
+        & L      & S      & L/fs       & S/fs       & Test [\%] \\
+\midrule
+CWRU bearings        & 2048  & 512   & L/fs & S/fs & 70 / 15 / 15 \\
+Paderborn bearings   & 4096  & 1024  & L/fs & S/fs & 70 / 15 / 15 \\
+Motor drive rig      & 4096  & 1024  & L/fs & S/fs & 60 / 20 / 20 \\
+Industrial pump line & 8192  & 2048  & L/fs & S/fs & 60 / 20 / 20 \\
+\end{tabular}
+\end{table}
+
+fw ∈ F are derived from the original annotations using a last-sample, majority or expert-defined rule over each window, as appropriate for the dataset. When multiple operating conditions are available (e.g., different loads or
+speeds), they are included in the splits to allow both within-condition and cross-condition analysis in the results section.
+
+\subsection{Preprocessing and windowing}
+Before windowing, each sensor channel is detrended and, where appropriate, band-pass filtered to remove DC offsets and out-of-band noise. The multichannel time series are then segmented into overlapping windows Yw ∈
+RM×L with stride S, as in Eqation (6). The choice of L and S is guided by the characteristic fault frequencies of the assets under study and by the real-time
+constraint in Equation (15), which links window stride to the available computation time per window.
+Table 3 reports, for each dataset, the chosen values of L and S, the corresponding window duration and stride in milliseconds, and the relative proportions of training, validation and test windows. The window duration
+and stride are computed from L, S and the sampling frequency fs in Table 2.
+Within each window, features are computed via the operator ϕ(·) defined in Eq (7), and then standardised using the training-set statistics µ and σ as
+in Equation (8). The same normalisation parameters are applied to validation and test data.
+
+\subsection{Model configurations and implementation details}
+The proposed real-time diagnosis system is instantiated with a compact neural classifier gθ and, where appropriate, a separate feature-extractor operator ϕ(·). To place the results in context, a set of baseline models is implemented, covering both conventional machine-learning methods and more expressive deep architectures. Table 4 lists the main model configurations considered in the experimental study.
+For the conventional baselines (M1–M3), ϕ(·) in Equation (7) is implemented as a hand-engineered feature extractor comprising time-domain statistics (e.g.,
+RMS, skewness, kurtosis, crest factor) and selected spectral-band energies. For the ELM, CNN and Bi-LSTM models (M4–M8), ϕ(·) is either the identity mapping (raw windows) or a first convolutional block, and the remaining layers form the classifier gθ.
+All neural models are trained using mini-batch stochastic gradient de- scent or Adam, with learning rate, batch size and number of epochs tuned on the validation set. Early stopping based on validation loss is used to mitigate overfitting. Categorical cross-entropy is used as the loss function, in line with Equation (12). Training and offline evaluation are performed on a workstation- class CPU and GPU, while real-time execution tests are conducted on the target edge device described in Section 4. For each dataset–model combination, the quantities Tfeat and Tinf are measured on the edge device so that the timing constraint in Eq (15) can be checked in the results section.
+
+\begin{table}[htbp]
+\centering
+\caption{Model configurations used in the experimental study. Here d is the feature dimension, P the number of trainable parameters, and “Feat.” indicates whether a separate feature extractor ϕ(·) is used (handcrafted or learned). Parameter counts are indicative and depend on the exact architecture and dataset.}
+\label{tab:model_configs}
+\begin{tabular}{lcccccc}
+Model ID & Type & Feat. & d & P & [×103] \\
+\midrule
+M1 & SVM (RBF kernel) & Handcrafted & 32-64 & - & \\
+M2 & Random Forest & Handcrafted & 32-64 & - & \\
+M3 & k-NN (Euclidean) & Handcrafted & 32-64 & - & \\
+M4 & ELM & Raw / learned & 64-128 & 10-30 & \\
+M5 & 1D-CNN (shallow) & Raw & 64 & 30-50 & \\
+M6 & 1D-CNN (proposed) & Raw & 64-128 & 50-120 & \\
+M7 & Bi-LSTM & Raw & 64 & 80-150 & \\
+M8 & CNN-Transformer hybrid & Raw & 128 & 150-300 & \\
+\end{tabular}
+\end{table}
+
+\subsection{Evaluation metrics}
+Diagnostic performance is reported using standard multi-class metrics
+computed on the held-out test set. Let fw and
+fˆw denote the true and
+predicted labels for each window, respectively. The following metrics are used:
+•	Overall accuracy (Acc): fraction of correctly classified windows.
+•	Macro-averaged precision, recall and F1-score: per-class preci- sion, recall and F1 are computed and then averaged across all classes, so that rare and frequent fault modes contribute equally.
+•	Confusion matrices: per-dataset confusion matrices showing, for each true class, the distribution of predicted classes, which helps identify systematic confusions between specific fault types.
+•	ROC and AUC: receiver operating characteristic curves and area- under-curve values for selected one-vs-rest and healthy-vs-fault discrimination tasks.
+Real-time behaviour is characterised by:
+•	Average and worst-case latency per window: measured values of
+Tfeat, Tinf and Tfeat +Tinf during streaming operation on the edge device.
+•	CPU utilisation and memory footprint: average processor load and memory usage under continuous operation at the target sampling rate.
+•	Real-time margin: difference between the available budget STs and the measured processing time Tfeat +Tinf, derived from the timing model in Section 4.
+The numerical values of these metrics, as well as comparisons between the proposed configuration and the baselines in Table 4, are presented and discussed in the results section.

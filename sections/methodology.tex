@@ -1,0 +1,109 @@
+\section{Problem Formulation and Mathematical Model}
+\label{sec:problem_formulation}
+
+In this section, the machine-learning-based fault diagnosis system is written as a sequence of operators acting on multi-sensor time-series data. The formulation is kept generic so that different feature extractors and classifiers can be instantiated within the same framework while sharing the same notation.
+
+\subsection{Industrial Process and Sensing Model}
+Consider an industrial asset or process monitored by $M$ sensors. At discrete time step $k \in \mathbb{N}$, the measurement vector
+\begin{equation}
+    \mathbf{y}_k \in \mathbb{R}^M
+    \label{eq:yk}
+\end{equation}
+collects all sensor readings at that time instant, where each component of $\mathbf{y}_k$ corresponds to one sensor channel (e.g., vibration, current, temperature, pressure, or acoustic).
+
+The underlying system is assumed to operate in one of $C$ mutually exclusive health states (fault classes),
+\begin{equation}
+    f_k \in \mathcal{F} = \{1, 2, \dots, C\},
+    \label{eq:fk}
+\end{equation}
+where $\mathcal{F}$ denotes the finite set of class indices. One index in $\mathcal{F}$ is reserved for the healthy state, while the remaining indices represent specific fault modes, such as inner-race bearing defect, stator winding fault, or gear tooth crack. The variable $f_k$ in Equation~\eqref{eq:fk} can be interpreted as a hidden state during online operation and is typically observed only during training through test rig experiments, controlled fault injection, maintenance reports, or expert annotation.
+
+Under a supervised setting, the training dataset is constructed as
+\begin{equation}
+    \mathcal{D} = \left\{ \left( \mathbf{Y}^{(i)}, f^{(i)} \right) \right\}_{i=1}^{N},
+    \label{eq:dataset}
+\end{equation}
+where $N$ is the number of training windows, $\mathbf{Y}^{(i)} \in \mathbb{R}^{M \times L}$ denotes the $i$-th multi-sensor segment (window) of length $L$ samples, and $f^{(i)} \in \mathcal{F}$ is the corresponding class label. The parameter $L$ thus controls the temporal span over which the model is trained to recognize a given health state.
+
+\subsection{Sliding-Window Data Representation}
+To capture temporal structure while keeping the input dimension fixed, the data stream $\{\mathbf{y}_k\}_{k \geq 1}$ is segmented into overlapping sliding windows. For a generic time index $k \geq L$, the window
+\begin{equation}
+    \mathbf{Y}_k = [\mathbf{y}_{k-L+1}, \dots, \mathbf{y}_k] \in \mathbb{R}^{M \times L}
+    \label{eq:Yk}
+\end{equation}
+collects the most recent $L$ multi-sensor samples in column form. Each column of $\mathbf{Y}_k$ corresponds to one time step and each row corresponds to one sensor channel.
+
+In practice, it is convenient to index windows by an integer $w = 1, 2, \dots$ and introduce a stride parameter $S \in \mathbb{N}$, which specifies how many samples elapse between successive windows. The time index of the $w$-th window is then
+\begin{equation}
+    k_w = k_0 + (w - 1) S,
+    \label{eq:kw}
+\end{equation}
+for some initial index $k_0 \geq L$, and the corresponding window is defined as
+\begin{equation}
+    \mathbf{Y}_w := \mathbf{Y}_{k_w}.
+    \label{eq:Yw}
+\end{equation}
+The pair $(L, S)$ controls both the degree of overlap between windows (with $S < L$ implying overlap) and the trade-off between temporal resolution and computational load.
+
+Each window $\mathbf{Y}_w$ is associated with a class label $f_w \in \mathcal{F}$ derived from the underlying state sequence $\{f_k\}$. For instance, using the last-sample rule one sets $f_w = f_{k_w}$, whereas a majority rule would assign $f_w$ as the most frequent class over the set $\{f_{k_w - L + 1}, \dots, f_{k_w}\}$. The proposed formulation does not enforce a specific rule, provided that a single label $f_w$ can be assigned to each training window.
+
+\subsection{Feature Extraction and Normalization}
+The raw window $\mathbf{Y}_w$ in Equation~\eqref{eq:Yw} is mapped to a feature vector $\mathbf{z}_w$ by a feature extraction operator
+\begin{equation}
+    \phi : \mathbb{R}^{M \times L} \to \mathbb{R}^d, \quad \mathbf{z}_w = \phi(\mathbf{Y}_w), \quad \mathbf{z}_w \in \mathbb{R}^d.
+    \label{eq:phi}
+\end{equation}
+Here, $d$ denotes the feature dimension. The operator $\phi(\cdot)$ can implement classical handcrafted feature sets (e.g., RMS, peak-to-peak value, skewness, kurtosis, spectral centroid, band energy) or learned representations obtained from convolutional, recurrent, or transformer encoders applied to the windowed signal~\cite{example1,example2}. In compact notation, $\phi(\cdot)$ represents the complete pre-processing and feature-extraction chain that transforms the raw multi-sensor segment into a fixed-length feature vector.
+
+To stabilise training and inference, the feature vectors are standardised using statistics computed on the training set. Let
+\[
+    \boldsymbol{\mu} \in \mathbb{R}^d, \quad \boldsymbol{\sigma} \in \mathbb{R}^d
+\]
+denote the empirical mean and standard deviation of $\mathbf{z}_w$ across all training windows. The normalised feature vector is then defined as
+\begin{equation}
+    \tilde{\mathbf{z}}_w = \frac{\mathbf{z}_w - \boldsymbol{\mu}}{\boldsymbol{\sigma}},
+    \label{eq:normalize}
+\end{equation}
+where the division is understood component-wise. Equation~\eqref{eq:normalize} ensures that each feature dimension has approximately zero mean and unit variance at training time, which tends to improve numerical conditioning and convergence for many classifier models. When $\phi(\cdot)$ is implemented as a neural network trained jointly with the classifier, $\boldsymbol{\mu}$ and $\boldsymbol{\sigma}$ may still be maintained as running estimates for normalisation.
+
+\subsection{Classifier Model}
+On top of the normalised feature space $\tilde{\mathbf{z}}_w$ in Equation~\eqref{eq:normalize}, the diagnosis model is represented by a parametric classifier
+\begin{equation}
+    g_\theta : \mathbb{R}^d \to [0, 1]^C,
+    \label{eq:gtheta}
+\end{equation}
+parameterised by $\theta$. For a given input $\tilde{\mathbf{z}}_w$, the classifier outputs a probability vector
+\begin{equation}
+    \mathbf{p}_w = g_\theta(\tilde{\mathbf{z}}_w), \quad \sum_{c=1}^{C} p_{w,c} = 1, \quad p_{w,c} \geq 0,
+    \label{eq:pw}
+\end{equation}
+where $p_{w,c}$ represents the estimated posterior probability that window $w$ belongs to class $c$. The mapping $g_\theta$ in~\eqref{eq:gtheta} is intentionally generic: it may represent a linear or kernel SVM with probabilistic calibration, a tree ensemble such as a random forest or gradient boosting machine, or a neural network (e.g., multilayer perceptron, 1D-CNN, or recurrent model)~\cite{example3}. The parameter vector $\theta$ collects all internal weights and biases of the chosen classifier.
+
+Given the posterior vector $\mathbf{p}_w$, the predicted class label for window $w$ is obtained by maximum a posteriori (MAP) selection,
+\begin{equation}
+    \hat{f}_w = \arg\max_{c \in \mathcal{F}} p_{w,c},
+    \label{eq:map}
+\end{equation}
+so that $\hat{f}_w$ is the class index with the highest estimated probability. During training, let $f^{(i)}$ denote the ground-truth label associated with the $i$-th window and $\mathbf{p}^{(i)} = g_\theta(\tilde{\mathbf{z}}^{(i)})$ the corresponding probability vector. The classifier parameters $\theta$ are estimated by minimising the average cross-entropy loss
+\begin{equation}
+    \mathcal{L}(\theta) = -\frac{1}{N} \sum_{i=1}^{N} \log p^{(i)}_{f^{(i)}},
+    \label{eq:loss}
+\end{equation}
+which penalises low probability assigned to the correct class and is widely used for multi-class classification. Regularisation terms (e.g., $\ell_2$ penalties) can be added when needed but are omitted here for clarity.
+
+\subsection{Decision Logic and Performance Metrics}
+During deployment, the classifier outputs $\mathbf{p}_w$ and $\hat{f}_w$ from Equations~\eqref{eq:pw}–\eqref{eq:map} must be converted into operational decisions. In many industrial settings, it is useful to distinguish between healthy operation, confirmed fault, and uncertain conditions. This is achieved by introducing decision thresholds on the posterior probabilities.
+
+Let $f_{\text{healthy}} \in \mathcal{F}$ be the index assigned to the healthy class and let $\tau_{\text{fault}}, \tau_{\text{conf}} \in (0, 1]$ denote user-defined thresholds with $0 < \tau_{\text{conf}} \leq \tau_{\text{fault}} \leq 1$. For window $w$, a fault alarm is triggered when
+\begin{equation}
+    \hat{f}_w \neq f_{\text{healthy}} \quad \text{and} \quad p_{w,\hat{f}_w} \geq \tau_{\text{fault}},
+    \label{eq:alarm}
+\end{equation}
+that is, the most probable class is not healthy and its probability exceeds $\tau_{\text{fault}}$. An uncertainty warning can be raised when
+\begin{equation}
+    \max_{c \in \mathcal{F}} p_{w,c} < \tau_{\text{conf}},
+    \label{eq:uncertain}
+\end{equation}
+in which case the system may choose a conservative response (e.g., requesting operator input). Equations~\eqref{eq:alarm}–\eqref{eq:uncertain} constitute a minimal decision layer that can be extended with temporal smoothing or hysteresis.
+
+The diagnosis system is evaluated along two main axes. First, standard classification metrics (accuracy, precision, recall, F1-score, confusion matrices) quantify diagnostic performance. Second, latency and resource metrics (average/worst-case inference time, CPU/memory usage) characterise real-time behaviour, linked to sampling rate and stride via the timing model in Section~\ref{sec:algorithm}.

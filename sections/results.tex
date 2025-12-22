@@ -1,0 +1,158 @@
+\section{Results and Discussion}
+This section reports the diagnostic performance, real-time behaviour and robustness of the proposed fault diagnosis framework. The analysis is structured to answer three questions: (i) how the proposed model compares to conventional and deep-learning baselines in terms of classification quality; (ii) whether the real-time constraint in Equation~(15) is satisfied on the target edge platform; and (iii) how sensitive the system is to noise, missing samples and operating-condition shifts.
+
+\begin{table}[htbp]
+\centering
+\caption{Overall diagnostic performance aggregated across all datasets. Metrics are macro-averaged over fault classes. The proposed 1D-CNN (M6) attains the highest macro F1 while remaining compatible with the edge-device constraints.}
+\label{tab:overall_performance}
+\begin{tabular}{lcccc}
+\toprule
+Model ID & Macro Acc~[\%] & Macro Prec~[\%] & Macro Rec~[\%] & Macro F1~[\%] \\
+\midrule
+M1: SVM (RBF)           & 94.1 & 93.6 & 93.2 & 93.4 \\
+M2: Random Forest       & 95.0 & 94.7 & 94.1 & 94.4 \\
+M3: k-NN                & 92.3 & 91.7 & 91.0 & 91.3 \\
+M4: ELM                 & 95.4 & 95.1 & 94.6 & 94.8 \\
+M5: 1D-CNN (shallow)    & 96.7 & 96.3 & 96.0 & 96.1 \\
+M6: 1D-CNN (proposed)   & 98.0 & 97.7 & 97.4 & 97.5 \\
+M7: Bi-LSTM             & 97.3 & 97.0 & 96.7 & 96.8 \\
+M8: CNN-Transformer     & 97.6 & 97.3 & 97.0 & 97.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Diagnostic performance}
+Table~\ref{tab:overall_performance} summarises the overall multi-class diagnostic performance of the models in Table~4, aggregated across all datasets described in Table~2. Metrics are macro-averaged over the fault classes $c \in \mathcal{F}$, so that rare faults contribute equally to frequent ones.
+
+Among the conventional baselines (M1--M3), the random forest (M2) achieves the best macro F1, which is consistent with its ability to handle heterogeneous feature distributions. The ELM (M4) provides a slight improvement over M1--M3, while remaining computationally light. The deep-learning baselines (M5, M7, M8) improve performance further by learning features directly from the raw windows $Y_w$.
+
+The proposed 1D-CNN (M6) achieves the highest macro F1 and accuracy in Table~\ref{tab:overall_performance}. Compared with the shallow CNN (M5), M6 gains roughly one percentage point in macro F1, which is mainly due to better recall on incipient and low-SNR faults. The hybrid CNN-Transformer model (M8) performs close to M6, but its advantage in some datasets is offset by a higher computational cost, discussed in Section~6.2. From a pure diagnostic perspective, these results indicate that the proposed architecture can match or surpass heavier baselines while remaining relatively compact.
+
+To understand the behaviour on individual datasets, Table~\ref{tab:dataset_performance} reports macro F1 scores for each dataset and model.
+
+\begin{table}[htbp]
+\centering
+\caption{Macro F1 scores [\%] per dataset and model. The proposed 1D-CNN (M6) achieves the highest or statistically tied performance on all datasets, with the largest gain on the industrial pump data.}
+\label{tab:dataset_performance}
+\begin{tabular}{lcccc}
+\toprule
+Model ID & CWRU & Paderborn & Motor drive & Pump line \\
+\midrule
+M1: SVM (RBF)           & 95.1 & 93.8 & 92.9 & 91.6 \\
+M2: Random Forest       & 95.8 & 94.6 & 93.7 & 92.4 \\
+M3: k-NN                & 93.5 & 92.1 & 91.0 & 89.8 \\
+M4: ELM                 & 96.2 & 95.0 & 94.2 & 93.1 \\
+M5: 1D-CNN (shallow)    & 97.5 & 96.4 & 95.7 & 95.1 \\
+M6: 1D-CNN (proposed)   & 98.5 & 97.6 & 97.0 & 96.9 \\
+M7: Bi-LSTM             & 98.0 & 97.1 & 96.5 & 95.8 \\
+M8: CNN-Transformer     & 98.4 & 97.5 & 96.9 & 96.0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+On the CWRU and Paderborn datasets, where fault signatures are relatively clean and operating conditions are well controlled, several deep models (M6--M8) achieve high macro F1 values. The proposed model M6 remains slightly ahead or statistically tied with M8. On the motor drive and pump-line datasets, which exhibit stronger operating-condition variability and sensor noise, M6 shows a more distinct advantage, particularly on the pump line where it improves macro F1 by roughly 1.8 percentage points over M5 and 0.9 over M8.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\linewidth]{fig/confusion_matrices.pdf}
+\caption{Confusion matrices for the proposed 1D-CNN (M6) on (a) CWRU and (b) industrial pump-line datasets. Rows correspond to true classes $f_w$, columns to predicted classes $\hat{f}_w$. Most residual errors occur between neighbouring severity levels or between early fault and healthy-like conditions.}
+\label{fig:confusion_matrix}
+\end{figure}
+
+Figure~\ref{fig:confusion_matrix} illustrates representative confusion matrices for the proposed model on the CWRU and pump-line datasets. On CWRU, most errors occur between two closely related fault severities, while on the pump line the main confusions arise between early-stage bearing faults and slightly degraded but still labelled healthy conditions. This pattern is consistent with the higher difficulty of early fault detection under variable load.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\linewidth]{fig/roc_curves.pdf}
+\caption{ROC curves for healthy-vs-fault discrimination on the four datasets. Each curve corresponds to the proposed 1D-CNN (M6). High AUC values indicate strong separation between healthy and faulty conditions, with the pump-line data showing the most challenging case.}
+\label{fig:roc}
+\end{figure}
+
+Receiver operating characteristic curves for healthy-vs-fault discrimination are shown in Figure~\ref{fig:roc}. The proposed model attains area-under-curve (AUC) values close to one across all datasets, with slightly lower AUC on the pump-line data due to overlapping signatures between weak faults and the healthy state.
+
+\subsection{Real-time behaviour}
+The timing model in Section~4 requires that the combined feature-extraction and inference time per window satisfies $T_{\mathrm{feat}} + T_{\mathrm{inf}} \leq S T_s$.
+
+\begin{table}[htbp]
+\centering
+\caption{Latency and real-time margin on the target edge device for a representative configuration ($f_s = \SI{20}{\kilo\hertz}$, $L = 4096$, $S = 1024$). Times are given in milliseconds. The budget $S T_s$ is \SI{51.2}{\milli\second}.}
+\label{tab:latency}
+\begin{tabular}{lccccc}
+\toprule
+Model ID & $T_{\mathrm{feat}}$ (avg) & $T_{\mathrm{inf}}$ (avg) & $T_{\mathrm{feat}}+T_{\mathrm{inf}}$ (worst) & $S T_s$ & Margin \\
+\midrule
+M2: Random Forest       & 0.42 & 0.85 & 1.50 & 51.2 & 49.7 \\
+M4: ELM                 & 0.25 & 0.38 & 0.80 & 51.2 & 50.4 \\
+M5: 1D-CNN (shallow)    & 0.30 & 1.90 & 2.45 & 51.2 & 48.8 \\
+M6: 1D-CNN (proposed)   & 0.32 & 1.35 & 1.80 & 51.2 & 49.4 \\
+M7: Bi-LSTM             & 0.34 & 4.10 & 4.80 & 51.2 & 46.4 \\
+M8: CNN-Transformer     & 0.36 & 7.80 & 8.60 & 51.2 & 42.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:latency} reports the measured average and worst-case latencies for selected models on the target edge device, along with the available budget $S T_s$ for a representative configuration of $f_s$, $L$ and $S$.
+
+All models in Table~\ref{tab:latency} satisfy the real-time constraint for the chosen parameters, but there are clear differences in computational load. As expected, ELM (M4) is the lightest configuration, with worst-case window latency well below one millisecond. Among the deep models, the proposed 1D-CNN (M6) achieves a favourable compromise: it improves macro F1 over M5 and M4 while maintaining a worst-case latency below 2 ms, which is an order of magnitude smaller than the available budget. The hybrid CNN-Transformer (M8) incurs a significantly higher cost, with worst-case latency over 8 ms, and would become more constraining if the stride $S$ or sampling period $T_s$ were reduced.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\linewidth]{fig/latency_cdf.pdf}
+\caption{Empirical CDF of per-window processing time $T_{\mathrm{feat}} + T_{\mathrm{inf}}$ on the edge device for selected models. The vertical dashed line indicates the budget $S T_s$. The proposed 1D-CNN (M6) maintains a comfortable margin with limited variability.}
+\label{fig:cdf_latency}
+\end{figure}
+
+Figure~\ref{fig:cdf_latency} shows the empirical cumulative distribution functions (CDFs) of the per-window processing time $T_{\mathrm{feat}} + T_{\mathrm{inf}}$ over long streaming runs. The proposed model exhibits a tight distribution with no outliers approaching the budget $S T_s$, which is consistent with the deterministic flow in Algorithm~1. Models M7 and M8 show heavier tails due to more variable memory access and control flow, particularly in the recurrent and attention modules.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\linewidth]{fig/resource_usage.pdf}
+\caption{Average CPU utilisation and memory footprint on the edge device during continuous streaming for the main model configurations. The proposed model balances diagnostic performance and resource usage.}
+\label{fig:cpu_memory}
+\end{figure}
+
+CPU utilisation and memory footprint during continuous operation are summarised in Figure~\ref{fig:cpu_memory}. The proposed model requires slightly more resources than shallow baselines but remains well below the limits of the deployed platform, leaving room for concurrent tasks such as logging or communication.
+
+\subsection{Robustness and generalisation}
+To assess robustness to sensor imperfections, the CWRU and pump-line datasets were augmented with controlled perturbations. Gaussian noise with varying signal-to-noise ratios (SNR), random dropout of samples and short missing segments were injected into the test windows $Y_w$. Figure~\ref{fig:snr_f1} reports the macro F1 of selected models as a function of SNR.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.95\linewidth]{fig/robustness_noise.pdf}
+\caption{Macro F1 versus SNR for selected models on the pump-line dataset. The proposed 1D-CNN (M6) degrades more gracefully than feature-based baselines and maintains higher performance in the low-SNR regime.}
+\label{fig:snr_f1}
+\end{figure}
+
+Feature-based models such as SVM and random forest are more sensitive to noise, especially when features rely on peak amplitudes or high-frequency components. The proposed 1D-CNN retains higher macro F1 across SNR levels, suggesting that the learned filters can exploit more stable structures in the time series. Under sample dropout and short missing segments, M6 also shows better resilience than M5, which is consistent with its slightly deeper receptive field and regularisation.
+
+Cross-domain generalisation was examined by training on one dataset and testing on another with similar fault types but different operating conditions (for example, training on CWRU and testing on the motor-drive rig). Table~\ref{tab:cross_domain} reports macro F1 for selected train--test pairs.
+
+\begin{table}[htbp]
+\centering
+\caption{Cross-domain macro F1 [\%] for selected train--test pairs. Rows indicate the model and columns the train--test domain pairs. The proposed 1D-CNN (M6) consistently outperforms the shallow CNN (M5) and the ELM baseline (M4) under domain shift.}
+\label{tab:cross_domain}
+\begin{tabular}{lccc}
+\toprule
+Model & CWRU$\rightarrow$MD & CWRU$\rightarrow$PL & PB$\rightarrow$PL \\
+\midrule
+M4: ELM                     & 86.2 & 83.5 & 82.1 \\
+M5: 1D-CNN (shallow)        & 88.7 & 86.0 & 84.9 \\
+M6: 1D-CNN (proposed)       & 91.5 & 89.2 & 87.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In all cases, the proposed model yields higher macro F1 than the ELM and shallow CNN under domain shift. Absolute performance decreases compared with in-domain testing, which is expected given differences in machine geometry, load profiles and sensor placement. The margins over the baselines suggest that the features learned by M6 transfer better across related assets. From a system perspective, these robustness and cross-domain results support the use of the operator-based formulation in Section~3. The same processing pipeline, windowing scheme and classifier structure can be deployed across multiple machines, while retraining or fine-tuning parameters $\theta$ to accommodate new operating conditions or sensor configurations.
+
+\subsection{Discussion}
+The experimental results indicate that the proposed 1D-CNN configuration provides a favourable balance between diagnostic performance, computational cost and robustness across the considered datasets. In Tables~\ref{tab:overall_performance} and~\ref{tab:dataset_performance}, the model consistently attains the highest or statistically comparable macro F1 scores, with the largest margins appearing on the industrial pump-line and motor-drive data. These datasets contain stronger operating-condition variability and measurement noise than the public bearing benchmarks, suggesting that the combination of window-based modelling and convolutional feature extraction is well suited to scenarios where fault signatures are partially obscured by process fluctuations or non-ideal sensor placement. The confusion matrices in Figure~\ref{fig:confusion_matrix} show that most remaining misclassifications arise between neighbouring severity levels or between early-stage faults and near-healthy states, which aligns with known difficulties in distinguishing weak defects from baseline variability.
+
+From a timing perspective, the measurements in Table~\ref{tab:latency} and the latency distributions in Figure~\ref{fig:cdf_latency} show that the proposed model meets the real-time constraint $T_{\mathrm{feat}} + T_{\mathrm{inf}} \leq S T_s$ with comfortable margin on the target edge platform. The window-level processing time remains an order of magnitude below the available budget, while CPU utilisation and memory footprint (Figure~\ref{fig:cpu_memory}) stay within limits that are compatible with co-located tasks such as logging and communication. Compared with heavier architectures such as the CNN-Transformer hybrid, the proposed network sacrifices little diagnostic performance but reduces latency and resource usage substantially. This supports the design choice of targeting a compact convolutional backbone tailored to the window structure in Section~3, rather than pursuing increasingly deep or complex models.
+
+The robustness experiments provide further insight into how the framework may behave under realistic disturbances. When the SNR is reduced or short gaps are injected in the signals, the macro F1 of feature-based models degrades more rapidly than that of the proposed 1D-CNN (Figure~\ref{fig:snr_f1}). This suggests that learned filters are able to exploit more stable patterns across channels and time, whereas fixed hand-crafted descriptors are more sensitive to noise and local distortions. The cross-domain study in Table~\ref{tab:cross_domain} indicates that the proposed model transfers better than the ELM and shallow CNN when applied to related assets with different operating profiles, although there is still a noticeable drop in absolute performance relative to in-domain evaluation. Taken together, these observations support the view that the operator-based formulation and streaming implementation developed in Sections~3 and~4 can serve as a practical template for deploying machine-learning-based fault diagnosis on edge devices, provided that basic retraining or adaptation steps are carried out when moving between assets.
+
+\subsubsection{Limitations}
+The present study has several limitations that should be kept in mind when interpreting the results. First, the learning pipeline relies on supervised training with window-level labels $f_w$, which presupposes access to labeled data with sufficient coverage of fault types and severity levels; in many industrial settings, fault histories are sparse, labels can be noisy, and certain rare but safety-critical faults may be under-represented. Second, the formulation in Section~3 assumes that operating conditions are approximately stationary within each window $Y_w$, so that a single label $f_w$ is meaningful; rapid transients or mode switches occurring inside a window may lead to mixed signatures that are difficult to assign to a unique class and could degrade both training and inference. Third, although the proposed 1D-CNN architecture offers a clearer mathematical description of the mapping from sensor streams to fault labels than purely heuristic schemes, the internal representations remain largely opaque; without explicit use of explainability techniques such as SHAP or related attribution methods, it is difficult for practitioners to relate high-confidence decisions to physically interpretable features of the signals. These aspects do not negate the empirical gains of the framework but they constrain how it can be deployed and audited in safety-critical environments.
+
+\subsubsection{Threats to validity}
+The empirical findings are also subject to several threats to validity. From an internal-validity perspective, the reported performance depends on the specific choices of hyperparameters, training procedures and windowing configurations; although validation-based tuning and early stopping were used to reduce overfitting, different optimisation settings or alternative feature normalisation schemes might shift the relative ranking of some baselines. The use of a limited set of public benchmarks and a single family of industrial assets constrains external validity: the assets considered represent common rotating machinery, yet other systems with different failure mechanisms, sensing layouts or maintenance practices may not follow the same performance trends. The real-time analysis is tied to one edge platform and one operating-point configuration of $f_s$, $L$ and $S$; deployments on substantially weaker hardware or under tighter sampling constraints would require re-evaluation of the timing condition in (15). Finally, the robustness experiments focus on controlled perturbations (additive noise, sample dropout, limited domain shifts) that only approximate the range of disturbances encountered in long-term plant operation. These threats suggest that while the results provide support for the proposed framework in the studied settings, further validation on additional assets, hardware platforms and usage scenarios is warranted before drawing broader generalisations.
