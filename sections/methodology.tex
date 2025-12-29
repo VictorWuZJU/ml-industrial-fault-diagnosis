@@ -53,7 +53,7 @@ The raw window $\mathbf{Y}_w$ in Equation~\eqref{eq:Yw} is mapped to a feature v
     \phi : \mathbb{R}^{M \times L} \to \mathbb{R}^d, \quad \mathbf{z}_w = \phi(\mathbf{Y}_w), \quad \mathbf{z}_w \in \mathbb{R}^d.
     \label{eq:phi}
 \end{equation}
-Here, $d$ denotes the feature dimension. The operator $\phi(\cdot)$ can implement classical handcrafted feature sets (e.g., RMS, peak-to-peak value, skewness, kurtosis, spectral centroid, band energy) or learned representations obtained from convolutional, recurrent, or transformer encoders applied to the windowed signal~\cite{example1,example2}. In compact notation, $\phi(\cdot)$ represents the complete pre-processing and feature-extraction chain that transforms the raw multi-sensor segment into a fixed-length feature vector.
+Here, $d$ denotes the feature dimension. The operator $\phi(\cdot)$ can implement classical handcrafted feature sets (e.g., RMS, peak-to-peak value, skewness, kurtosis, spectral centroid, band energy) or learned representations obtained from convolutional, recurrent, or transformer encoders applied to the windowed signal~\cite{lei2018signalprocessing,wen2020cnnraw,jiang2020multidomain}. In compact notation, $\phi(\cdot)$ represents the complete pre-processing and feature-extraction chain that transforms the raw multi-sensor segment into a fixed-length feature vector.
 
 To stabilise training and inference, the feature vectors are standardised using statistics computed on the training set. Let
 \[
